@@ -2,9 +2,10 @@
 
 set -e
 
-URL="http://localhost/rootfs.tar.xz"
+COMMIT="$(test -z $1 && echo 88ae21052affd8a14553bb969f9d41c464032122 || echo $1)"
+URL="https://github.com/tianon/docker-brew-debian/raw/${COMMIT}/jessie/rootfs.tar.xz"
 DOWNLOAD="curl -L -# -o rootfs.tar.xz"
-MATCHES="usr/share/(doc|man|locale)/|var/(log|run|cache)/"
+MATCHES="(usr/share/(doc|man|locale)|var/(log|run|cache))/.+"
 
 if [ "$(command -v wget 2>/dev/null || :)" ]; then
     DOWNLOAD="wget -q -O rootfs.tar.xz"
@@ -13,7 +14,7 @@ if [ "$(command -v wget 2>/dev/null || :)" ]; then
     fi
 fi
 
-echo "Baixando..."
+echo "Baixando ${COMMIT}..."
 $DOWNLOAD $URL
 echo "Descomprimindo..."
 xz -d -f rootfs.tar.xz
