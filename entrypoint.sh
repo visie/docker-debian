@@ -2,53 +2,60 @@
 
 set -e
 
-# Se não formos root, apenas executa o comando desejado
-if [ -n "$(whoami 2>/dev/null)" -a "$(whoami 2>/dev/null)" != "root" ]; then
-    HOME=$(getent passwd `whoami` | awk -F':' '{print $(NF - 1)}')
-    SHELL=$(getent passwd `whoami` | awk -F':' '{print $NF}')
-    COMMAND=$(test -n "${1}" && echo ${@} || echo "${SHELL} -l")
-    exec env -i HOME=${HOME} ${COMMAND}
+WHOAMI=$(whoami 2> /dev/null || true)
+
+if [ -n "${WHOAMI}" -a -z "${UID}${USER}${USERNAME}" ]; then
+    # Queremos executar sem alterar o usuário
+    SHELL="$(getent passwd ${WHOAMI} | awk -F':' '{print $NF}') -l"
+    HOME=$(getent passwd ${WHOAMI} | awk -F':' '{print $(NF - 1)}')
+    exec env -i HOME=${HOME} $(test -z ${1} && echo ${SHELL} || echo ${@})
 fi
 
-# Se somos root e desejamos executar como root...
-UID=$(test -z ${UID} && echo `id -u` || echo ${UID})
+WHOAMI=$(test "root" = "${WHOAMI}" && echo "docker" || echo ${WHOAMI})
 
-if [ "$(whoami 2>/dev/null)" = "root" -a "$(id -u)" = "${UID}" ]; then
-    exec env -i $(test -n "${1}" && echo ${@} || echo "/bin/bash -l")
+test ${USERNAME} || USERNAME=${USER}
+test ${USERNAME} || USERNAME=${WHOAMI}
+test ${USERNAME} || USERNAME=docker
+
+if [ $(echo ${UID} | grep -v -P '^\d+(:\d+)?$') ]; then
+    # UID na verdade é USERNAME
+    USERNAME=${UID}
+    UID=
+    GID=
 fi
 
-# Se desejamos executar como outro usuário...
-
-# ... primeiro garantimos que ele exista ...
-if [ "$(echo ${UID} | grep -P '^\d+:\d+$')" ]; then
+if [ $(echo ${UID} | grep -P '^\d+:\d+$') ]; then
+    # UID contém o GID
     GID=$(echo ${UID} | cut -f2 -d':')
     UID=$(echo ${UID} | cut -f1 -d':')
 fi
 
-GID=$(test -z ${GID} && echo ${UID} || echo ${GID})
+test ${UID} || UID=$(getent passwd "${USERNAME}" | cut -f3 -d':')
+test ${UID} || UID=1000
+test ${GID} || GID=${UID}
 
-if [ -z "$(getent passwd {$UID})" ]; then
-    groupadd -f -g ${GID} -o docker
-    useradd -d /home/docker -g ${GID} -M -N -o -s /bin/bash -u ${UID} docker
+if [ -z "$(grep -P "${USERNAME}:[^:]*:${UID}:${GID}" /etc/passwd)" ]; then
+    # O usuário desejado não existe!
+    groupadd -f -g ${GID} -o ${USERNAME}
+    useradd -g ${GID} -s /bin/bash -M -N -o -u ${UID} ${USERNAME}
 fi
 
-# ... garantimos que ele tenha uma home ...
-HOME=$(getent passwd ${UID} | awk -F':' '{print $(NF - 1)}')
-HOME=$(test -z ${HOME} && echo /home/docker || echo ${HOME})
+# O usuário existe e vamos garantir que tenha o UID e GID desejados
+groupmod -g ${GID} -o ${USERNAME}
+usermod -g ${GID} -o -u ${UID} ${USERNAME} 2>/dev/null
 
-if [ ! -d ${HOME} ]; then
-    cp -r /etc/skel ${HOME}
+# Confirmando a propriedade do diretório pessoal
+HOME=$(getent passwd ${USERNAME} | awk -F':' '{print $(NF - 1)}')
+if [ ${HOME} ]; then
+    test -d ${HOME} || cp -r /etc/skel ${HOME}
     chown -R ${UID}:${GID} ${HOME}
 fi
 
-# ... decidimos o comando a executar ...
-SHELL=$(getent passwd ${UID} | awk -F':' '{print $NF}')
-COMMAND=$(test -n "${1}" && echo "${@}" || echo "${SHELL} -l")
-
-# ... se somos root, encerramos com um ambiente de login
+# Definindo o comando a ser executado
 if [ "$(whoami)" = "root" ]; then
-    test -n "${1}" && exec env -i su --command "${COMMAND}" --login docker
-    exec env -i su -l docker
+    test -z ${1} && CMD="" || CMD="--command '${@}'"
+    exec env -i HOME=${HOME} su $CMD --login ${USERNAME}
 fi
 
-exec env -i HOME=${HOME} ${COMMAND}
+SHELL="$(getent passwd ${USERNAME} | awk -F':' '{print $NF}') -l"
+exec env -i HOME=${HOME} $(test -z ${1} && echo ${SHELL} || echo ${@})
