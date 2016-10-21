@@ -41,15 +41,17 @@ if [ -z "$(grep -P "${USERNAME}:[^:]*:${UID}:${GID}" /etc/passwd)" ]; then
 fi
 
 # O usuário existe e vamos garantir que tenha o UID e GID desejados
+HOME=$(getent passwd ${USERNAME} | awk -F':' '{print $(NF - 1)}')
+test ${HOME} || HOME=/home/${USERNAME}
 groupmod -g ${GID} -o ${USERNAME}
 usermod -g ${GID} -o -u ${UID} ${USERNAME} 2>/dev/null
 
 # Confirmando a propriedade do diretório pessoal
-HOME=$(getent passwd ${USERNAME} | awk -F':' '{print $(NF - 1)}')
-if [ ${HOME} ]; then
+if [ -e "${HOME}" ]; then
+    test -d ${HOME} || rm -rf ${HOME}
     test -d ${HOME} || cp -r /etc/skel ${HOME}
-    chown -R ${UID}:${GID} ${HOME}
 fi
+chown -R ${UID}:${GID} ${HOME}
 
 # Definindo o comando a ser executado
 if [ "$(whoami)" = "root" ]; then
