@@ -2,7 +2,7 @@
 
 set -e
 
-COMMIT="$(test -z $1 && echo 88ae21052affd8a14553bb969f9d41c464032122 || echo $1)"
+COMMIT="$(test -z $1 && echo 5f84ff77365de2ee50655978edad2ba5004c1321 || echo $1)"
 URL="https://github.com/tianon/docker-brew-debian/raw/${COMMIT}/jessie/rootfs.tar.xz"
 DOWNLOAD="curl -L -# -o rootfs.tar.xz"
 MATCHES="(usr/share/(doc|man|locale)|var/(log|run|cache))/.+"
