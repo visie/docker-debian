@@ -1,0 +1,87 @@
+#!/usr/bin/env sh
+
+set -e
+
+CURRENT_USERNAME=$(whoami 2>/dev/null || true)
+CURRENT_UID=$(id -u)
+CURRENT_GID=$(id -g)
+
+match_passwd () {
+    grep -P "${1}" /etc/passwd | head -1
+}
+
+if [ ! ${USERNAME}${USER} ]; then
+    if [ ! ${UID} ]; then
+        USERNAME=$(match_passwd ":${CURRENT_UID}:\d" | cut -d: -f1)
+        test ${USERNAME} || USERNAME=${CURRENT_USERNAME}
+        test ${USERNAME} || USERNAME=docker
+        exec env USERNAME=${USERNAME} ${0} ${@}
+    fi
+    if [ $(echo ${UID} | grep -P "[^0-9:]") ]; then
+        exec env USERNAME=${UID} UID="" ${0} ${@}
+    fi
+    test ${GID} || GID=$(echo ${UID} | cut -d: -f2)
+    UID=$(echo ${UID} | cut -d: -f1)
+    USERNAME=$(match_passwd ":${UID}:\d" | cut -d: -f1)
+    test ${USERNAME} || USERNAME=${CURRENT_USERNAME}
+    test ${USERNAME} || USERNAME=docker
+fi
+
+if [ ! ${UID} ]; then
+    UID=$(match_passwd "^${USERNAME}:" | cut -d: -f3)
+    test ${UID} || UID=${CURRENT_UID}
+fi
+
+test ${GID} || GID=$(echo ${UID} | cut -d: -f2)
+UID=$(echo ${UID} | cut -d: -f1)
+test ${GID} || GID=${UID}
+
+if [ "${USERNAME}" != "root" ]; then
+    test ${UID} -ne 0 || UID=1000
+    test ${GID} -ne 0 || GID=1000
+fi
+
+if [ -z "$(grep "^${USERNAME}:" /etc/group)" ]; then
+    groupadd -f -g ${GID} -o ${USERNAME}
+fi
+
+if [ -z "$(grep "^${USERNAME}:[^:]*:${GID}:" /etc/group)" ]; then
+    while true; do grep -q ${USERNAME} /etc/group && break || sleep 1; done
+    groupmod -g ${GID} -o ${USERNAME}
+fi
+
+if [ -z "$(match_passwd "^${USERNAME}:")" ]; then
+    useradd -g ${GID} -M -N -o -u ${UID} -s /bin/bash ${USERNAME}
+fi
+
+if [ -z "$(match_passwd "^${USERNAME}:[^:]*:${UID}:${GID}")" ]; then
+    usermod -g ${GID} -o -u ${UID} ${USERNAME}
+fi
+
+USER_DATA=$(match_passwd "^${USERNAME}:.*?:${UID}:${GID}")
+CURRENT_HOME=$(echo ${USER_DATA} | awk -F':' '{print $(NF - 1)}')
+HOME=$(test ${CURRENT_HOME} && echo ${CURRENT_HOME} || /home/${USERNAME})
+
+if [ -f ${HOME} ]; then
+    rm -rf ${HOME}
+fi
+
+if [ ! -e ${HOME} ]; then
+    mkdir -p ${HOME}
+    cp -r /etc/skel -T ${HOME}
+fi
+
+if [ -z ${CURRENT_HOME} ]; then
+    usermod -d ${HOME} ${USERNAME}
+fi
+
+chown -R ${UID}:${GID} ${HOME}
+
+CURRENT_SHELL=$(echo ${USER_DATA} | awk -F':' '{print $NF}')
+SHELL=$(test ${CURRENT_SHELL} && echo ${CURRENT_SHELL} || echo /bin/bash)
+
+if [ -z ${CURRENT_SHELL} ]; then
+    usermod -s ${SHELL}
+fi
+
+echo ${USERNAME} ${UID} ${GID} ${HOME} ${SHELL}

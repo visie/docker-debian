@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+
+set -e
+
+CURRENT_USERNAME=$(whoami)
+CURRENT_UID=$(id -u)
+CURRENT_GID=$(id -g)
+
+USERDATA=$(USERNAME=${USERNAME} UID=${UID} GID=${GID} user-setup) 
+test ${USERNAME} || USERNAME=${CURRENT_USERNAME}
+USERNAME=$(echo ${USERDATA} | cut -f1 -d' ')
+UID=$(echo ${USERDATA} | cut -f2 -d' ')
+GID=$(echo ${USERDATA} | cut -f3 -d' ')
+
+RUN="env -i USERNAME=${USERNAME} UID=${UID} GID=${GID}"
+SHELL=$(echo ${USERDATA} | cut -f5 -d' ')
+test ${SHELL} || SHELL=/bin/sh
+PARAMS=$(test -z ${1} && echo "" || echo -c"${@}")
+
+if [ "${CURRENT_USERNAME}" = "root" ]; then
+    if [ ${1} ]; then
+        exec ${RUN} su -c"${*}" ${USERNAME}
+    fi
+    SHELL="su"
+    PARAMS="-l ${USERNAME}"
+fi
+
+exec ${RUN} ${SHELL} ${PARAMS}
