@@ -75,7 +75,7 @@ if [ -z ${CURRENT_HOME} ]; then
     usermod -d ${HOME} ${USERNAME}
 fi
 
-chown -R ${UID}:${GID} ${HOME}
+chown -R ${UID}:${GID} ${HOME} 2>/dev/null || true
 
 CURRENT_SHELL=$(echo ${USER_DATA} | awk -F':' '{print $NF}')
 SHELL=$(test ${CURRENT_SHELL} && echo ${CURRENT_SHELL} || echo /bin/bash)
