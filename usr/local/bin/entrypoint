@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 
 set -e
-set -x
 
 CURRENT_UID=$(id -u)
 CURRENT_GID=$(id -g)
