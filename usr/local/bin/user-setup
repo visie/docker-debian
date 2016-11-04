@@ -21,6 +21,15 @@ if [ ${CURRENT_UID} -ne 0 -a ${CURRENT_GID} -eq 0 ]; then
 fi
 
 USER_INFO=$(getent passwd ${CURRENT_UID} || true)
+
+if [ "${HOME}" = "$(echo ${USER_INFO} | cut -d: -f6)" ]; then
+    unset HOME
+fi
+
+if [ "${SHELL}" = "$(echo ${USER_INFO} | cut -d: -f7)" ]; then
+    unset SHELL
+fi
+
 USERNAME=$(test ${USERNAME} && echo ${USERNAME} || echo ${USER})
 
 if [ ${UID} ]; then
@@ -89,8 +98,13 @@ if [ -z "${USER_HOME}" ]; then
     usermod -d ${USER_HOME} -m ${USER_NAME}
 fi
 
+if [ -n "${HOME}" -a "${HOME}" != "${USER_HOME}" ]; then
+    sed -r -i "s,(.*${USER_UID}:${USER_GID}.*:)(.*)(:.*$),\1${HOME}\3," /etc/passwd
+    USER_HOME=${HOME}
+fi
+
 if [ -n "${SHELL}" -a "${SHELL}" != "${USER_SHELL}" ]; then
-    usermod -s ${SHELL} ${USER_NAME}
+    sed -r -i "s,(.*${USER_UID}:${USER_GID}.*:)(.*$),\1${SHELL}\2," /etc/passwd
     USER_SHELL=${SHELL}
 fi
 

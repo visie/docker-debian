@@ -131,6 +131,13 @@ class TestDocker(unittest.TestCase):
             "newuser 1001 1002 /home/newuser /bin/bash\n"
         )
 
+    def testRunWithEnvironmentNewHome(self):
+        """E até mesmo um nome de usuário, um UID e um GID"""
+        self.doTest(
+            "-eHOME=/tmp/newhome",
+            "root 0 0 /tmp/newhome /bin/bash\n"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
