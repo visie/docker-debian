@@ -1,87 +1,102 @@
 #!/usr/bin/env sh
 
 set -e
+set -x
 
-CURRENT_USERNAME=$(whoami 2>/dev/null || true)
+get_free_ent () {
+    ent=${1}
+    shift
+    start=$(test ${1} && echo ${1} || echo 0)
+    for n in $(seq ${start} 65535); do
+        getent ${ent} ${n} && continue || true
+        exec echo ${n}
+    done
+}
+
+CURRENT_NAME=$(whoami 2>/dev/null || true)
 CURRENT_UID=$(id -u)
 CURRENT_GID=$(id -g)
 
-match_passwd () {
-    grep -P "${1}" /etc/passwd | head -1
-}
+if [ ${CURRENT_UID} -ne 0 -a ${CURRENT_GID} -eq 0 ]; then
+    CURRENT_GID=${CURRENT_UID}
+fi
 
-if [ ! ${USERNAME}${USER} ]; then
-    if [ ! ${UID} ]; then
-        USERNAME=$(match_passwd ":${CURRENT_UID}:\d" | cut -d: -f1)
-        test ${USERNAME} || USERNAME=${CURRENT_USERNAME}
-        test ${USERNAME} || USERNAME=docker
-        exec env USERNAME=${USERNAME} ${0} ${@}
+USER_INFO=$(getent passwd ${CURRENT_UID} || true)
+USERNAME=$(test ${USERNAME} && echo ${USERNAME} || echo ${USER})
+
+if [ ${UID} ]; then
+    USER_INFO=$(getent passwd `echo ${UID} | cut -d: -f1` || true)
+    if [ ! ${USERNAME} ]; then
+        USERNAME=$(echo ${UID} | grep -P "[^0-9:]" || true)
     fi
-    if [ $(echo ${UID} | grep -P "[^0-9:]") ]; then
-        exec env USERNAME=${UID} UID="" ${0} ${@}
+    UID=$(echo ${UID} | sed -r "s/[^0-9:]//g")
+    if [ ${USER_INFO} ]; then
+        USERNAME=$(echo ${USER_INFO} | awk -F: "{print \$1}")
+        UID=$(echo ${USER_INFO} | awk -F: "{print \$3}")
     fi
-    test ${GID} || GID=$(echo ${UID} | cut -d: -f2)
-    UID=$(echo ${UID} | cut -d: -f1)
-    USERNAME=$(match_passwd ":${UID}:\d" | cut -d: -f1)
-    test ${USERNAME} || USERNAME=${CURRENT_USERNAME}
-    test ${USERNAME} || USERNAME=docker
 fi
 
-if [ ! ${UID} ]; then
-    UID=$(match_passwd "^${USERNAME}:" | cut -d: -f3)
-    test ${UID} || UID=${CURRENT_UID}
+if [ ${USERNAME} ]; then
+    USER_INFO=$(getent passwd ${USERNAME} || true)
 fi
 
-test ${GID} || GID=$(echo ${UID} | cut -d: -f2)
-UID=$(echo ${UID} | cut -d: -f1)
-test ${GID} || GID=${UID}
+USER_NAME=$(echo ${USER_INFO} | awk -F: "{print \$1}")
+USER_UID=$(echo ${USER_INFO} | awk -F: "{print \$3}")
+USER_GID=$(echo ${USER_INFO} | awk -F: "{print \$4}")
+USER_HOME=$(echo ${USER_INFO} | awk -F: "{print \$6}")
+USER_SHELL=$(echo ${USER_INFO} | awk -F: "{print \$NF}")
 
-if [ "${USERNAME}" != "root" ]; then
-    test ${UID} -ne 0 || UID=1000
-    test ${GID} -ne 0 || GID=1000
+if [ ${CURRENT_UID} -ne 0 ]; then
+    if [ -z ${USER_INFO} ]; then
+        USER_NAME="docker"
+        USER_UID=${CURRENT_UID}
+        USER_GID=${CURRENT_GID}
+        USER_HOME="/tmp/${USER_NAME}"
+        USER_SHELL="/bin/bash"
+    fi
+    test -d ${USER_HOME} -o ! -e ${USER_HOME} || rm -rf ${USER_HOME}
+    test -d ${USER_HOME} || mkdir -p ${USER_HOME}
+    exec echo ${USER_NAME} ${USER_UID} ${USER_GID} ${USER_HOME} ${USER_SHELL}
 fi
 
-if [ -z "$(grep "^${USERNAME}:" /etc/group)" ]; then
-    groupadd -f -g ${GID} -o ${USERNAME}
+if [ -z ${USER_INFO} ]; then
+    USER_NAME=$(test ${USERNAME} && echo ${USERNAME} || echo "docker")
+    USER_UID=$(get_free_ent passwd 1000)
+    USER_GID=$(get_free_ent group 1000)
+    groupadd -f -o -g ${USER_GID} ${USER_NAME}
+    useradd -N -s /bin/bash -o -u ${USER_UID} ${USER_NAME}
+    USER_INFO=$(getent passwd ${USER_NAME})
+    USER_HOME=$(echo ${USER_INFO} | awk -F: "{print \$6}")
+    USER_SHELL=$(echo ${USER_INFO} | awk -F: "{print \$NF}")
 fi
 
-if [ -z "$(grep "^${USERNAME}:[^:]*:${GID}:" /etc/group)" ]; then
-    while true; do grep -q ${USERNAME} /etc/group && break || sleep 1; done
-    groupmod -g ${GID} -o ${USERNAME}
+test ${GID} || GID=$(echo ${UID} | sed -r "s/[^0-9:]//g" | cut -d: -f1)
+
+if [ -n "${GID}" -a "${GID}" != "${USER_GID}" ]; then
+    groupmod -o -g ${GID} ${USER_NAME}
+    usermod -g ${GID} ${USER_NAME}
+    USER_GID=${GID}
 fi
 
-if [ -z "$(match_passwd "^${USERNAME}:")" ]; then
-    useradd -g ${GID} -M -N -o -u ${UID} -s /bin/bash ${USERNAME}
+UID=$(echo ${UID} | awk -F: "{print \$1}")
+
+if [ -n "${UID}" -a "${UID}" != "${USER_UID}" ]; then
+    usermod -o -u ${UID} ${USER_NAME}
+    USER_UID=${UID}
 fi
 
-if [ -z "$(match_passwd "^${USERNAME}:[^:]*:${UID}:${GID}")" ]; then
-    usermod -g ${GID} -o -u ${UID} ${USERNAME}
+if [ -z "${USER_HOME}" ]; then
+    USER_HOME="/home/${USER_NAME}"
+    usermod -d ${USER_HOME} -m ${USER_NAME}
 fi
 
-USER_DATA=$(match_passwd "^${USERNAME}:.*?:${UID}:${GID}")
-CURRENT_HOME=$(echo ${USER_DATA} | awk -F':' '{print $(NF - 1)}')
-HOME=$(test ${CURRENT_HOME} && echo ${CURRENT_HOME} || /home/${USERNAME})
-
-if [ -f ${HOME} ]; then
-    rm -rf ${HOME}
+if [ -n "${SHELL}" -a "${SHELL}" != "${USER_SHELL}" ]; then
+    usermod -s ${SHELL} ${USER_NAME}
+    USER_SHELL=${SHELL}
 fi
 
-if [ ! -e ${HOME} ]; then
-    mkdir -p ${HOME}
-    cp -r /etc/skel -T ${HOME}
-fi
+test -d ${USER_HOME} -o ! -e ${USER_HOME} || rm -rf ${USER_HOME}
+test -d ${USER_HOME} || mkdir -p ${USER_HOME}
+chown -R ${USER_UID}:${USER_GID} ${USER_HOME}
 
-if [ -z ${CURRENT_HOME} ]; then
-    usermod -d ${HOME} ${USERNAME}
-fi
-
-chown -R ${UID}:${GID} ${HOME} 2>/dev/null || true
-
-CURRENT_SHELL=$(echo ${USER_DATA} | awk -F':' '{print $NF}')
-SHELL=$(test ${CURRENT_SHELL} && echo ${CURRENT_SHELL} || echo /bin/bash)
-
-if [ -z ${CURRENT_SHELL} ]; then
-    usermod -s ${SHELL}
-fi
-
-echo ${USERNAME} ${UID} ${GID} ${HOME} ${SHELL}
+exec echo ${USER_NAME} ${USER_UID} ${USER_GID} ${USER_HOME} ${USER_SHELL}
