@@ -20,14 +20,14 @@ SHELL=$(echo ${USER_INFO} | awk -F' ' "{print \$5}")
 RUN="exec env -i USERNAME=${USERNAME} UID=${UID} GID=${GID} HOME=${HOME}"
 if [ "${CURRENT_NAME}" != "root" ]; then
     if [ ${1} ]; then
-        ${RUN} ${SHELL} -c "${*}"
+        ${RUN} ${SHELL} -c "'${*}'"
     fi
     ${RUN} ${SHELL} -l
 fi
 
 RUN="${RUN} su"
 if [ ${1} ]; then
-    ${RUN} -c "${SHELL} -c ${*}" ${USERNAME}
+    ${RUN} -c "${SHELL} -c '${*}'" ${USERNAME}
 fi
 
 ${RUN} -l ${USERNAME}
