@@ -47,7 +47,7 @@ USER_HOME=$(echo ${USER_INFO} | awk -F: "{print \$6}")
 USER_SHELL=$(echo ${USER_INFO} | awk -F: "{print \$NF}")
 
 if [ ${CURRENT_UID} -ne 0 ]; then
-    if [ -z ${USER_INFO} ]; then
+    if [ -z "${USER_INFO}" ]; then
         USER_NAME="docker"
         USER_UID=${CURRENT_UID}
         USER_GID=${CURRENT_GID}
@@ -59,7 +59,7 @@ if [ ${CURRENT_UID} -ne 0 ]; then
     exec echo ${USER_NAME} ${USER_UID} ${USER_GID} ${USER_HOME} ${USER_SHELL}
 fi
 
-if [ -z ${USER_INFO} ]; then
+if [ -z "${USER_INFO}" ]; then
     USER_NAME=$(test ${USERNAME} && echo ${USERNAME} || echo "docker")
     USER_UID=$(get_free_ent passwd 1000)
     USER_GID=$(get_free_ent group 1000)
