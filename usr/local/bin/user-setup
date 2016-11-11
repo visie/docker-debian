@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 
 set -e
+set -x
 
 get_free_ent () {
     ent="passwd"
