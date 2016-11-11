@@ -3,9 +3,15 @@
 set -e
 
 get_free_ent () {
-    ent=${1}
-    shift
-    start=$(test ${1} && echo ${1} || echo 0)
+    ent="passwd"
+    start=0
+    if [ -n "${2}" ]; then
+        ent=${1}
+        shift
+    fi
+    if [ -n "${1}" ]; then
+        start=${1}
+    fi
     for n in $(seq ${start} 65535); do
         getent ${ent} ${n} && continue || true
         exec echo ${n}
@@ -30,21 +36,21 @@ if [ "${SHELL}" = "$(echo ${USER_INFO} | cut -d: -f7)" ]; then
     unset SHELL
 fi
 
-USERNAME=$(test ${USERNAME} && echo ${USERNAME} || echo ${USER})
+USERNAME=$(test -n "${USERNAME}" && echo ${USERNAME} || echo ${USER})
 
-if [ ${UID} ]; then
+if [ -n "${UID}" ]; then
     USER_INFO=$(getent passwd `echo ${UID} | cut -d: -f1` || true)
-    if [ ! ${USERNAME} ]; then
+    if [ -z "${USERNAME}" ]; then
         USERNAME=$(echo ${UID} | grep -P "[^0-9:]" || true)
     fi
     UID=$(echo ${UID} | sed -r "s/[^0-9:]//g")
-    if [ ${USER_INFO} ]; then
+    if [ -n "${USER_INFO}" ]; then
         USERNAME=$(echo ${USER_INFO} | awk -F: "{print \$1}")
         UID=$(echo ${USER_INFO} | awk -F: "{print \$3}")
     fi
 fi
 
-if [ ${USERNAME} ]; then
+if [ -n "${USERNAME}" ]; then
     USER_INFO=$(getent passwd ${USERNAME} || true)
 fi
 
